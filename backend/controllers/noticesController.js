@@ -14,5 +14,20 @@ const createNotice = async (req, res) => {
     }
 };
 
+// GET /api/notices – all authenticated users can read
+const getNotices = async (req, res) => {
+    try {
+        const filter = {};
+        if (req.query.property) filter.property = req.query.property;
+        if (req.user.role === 'owner') filter.owner = req.user.id;
 
+        const notices = await Notice.find(filter)
+            .populate('owner', 'name email avatar')
+            .populate('property', 'title address')
+            .sort('-createdAt');
+        res.json(notices);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
 
