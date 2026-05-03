@@ -6,7 +6,7 @@ const propertySchema = new mongoose.Schema({
     description: { type: String, trim: true },
     address: { type: String, required: true },
     city: { type: String, required: true },
-    propertyType: { type: String, enum: ['house', 'apartment', 'villa', 'room', 'commercial'], default: 'apartment' },
+    propertyType: { type: String, enum: ['house', 'apartment', 'villa', 'room', 'commercial', 'others'], default: 'apartment' },
     bedrooms: { type: Number, default: 0 },
     bathrooms: { type: Number, default: 0 },
     area: { type: Number }, // sq ft

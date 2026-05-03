@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { propertiesAPI, BASE_URL } from '../../services/api';
+import { propertiesAPI, leasesAPI, BASE_URL } from '../../services/api';
 import Card from '../../components/Card';
 import { colors, typography, spacing } from '../../constants/theme';
 
@@ -18,17 +18,38 @@ export default function PropertyExplorerScreen({ navigation }) {
     const [refreshing, setRefreshing] = useState(false);
     const [search, setSearch] = useState('');
     const [searching, setSearching] = useState(false);
+    const [viewMode, setViewMode] = useState('available'); // 'available' | 'leased'
 
     const load = useCallback(async (q) => {
         try {
-            const params = q ? { search: q } : {};
-            const { data } = await propertiesAPI.getAll(params);
-            setProperties(data || []);
+            if (viewMode === 'available') {
+                const params = q ? { search: q } : {};
+                const { data } = await propertiesAPI.getAll(params);
+                setProperties(data || []);
+            } else {
+                // Fetch active leases explicitly for the tenant
+                const { data } = await leasesAPI.getAll();
+                const leasedProps = data
+                    .filter(l => l.status === 'active' && l.property)
+                    .map(l => {
+                        let props = l.property;
+                        props.isAvailable = false; // Mark visual representation
+                        return props;
+                    });
+
+                // Client-side search for Leased Props if search Query exists
+                if (q) {
+                    const lLower = q.toLowerCase();
+                    setProperties(leasedProps.filter(p => p.title?.toLowerCase().includes(lLower) || p.address?.toLowerCase().includes(lLower)));
+                } else {
+                    setProperties(leasedProps);
+                }
+            }
         } catch (err) { console.log(err?.message); }
         finally { setLoading(false); setRefreshing(false); setSearching(false); }
-    }, []);
+    }, [viewMode]);
 
-    useEffect(() => { load(); }, [load]);
+    useEffect(() => { load(search); }, [load]);
 
     const handleSearch = () => { setSearching(true); load(search); };
 
@@ -96,6 +117,15 @@ export default function PropertyExplorerScreen({ navigation }) {
                     )}
                     {searching && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 4 }} />}
                 </View>
+
+                <View style={{ flexDirection: 'row', marginTop: spacing.md, gap: spacing.sm }}>
+                    <TouchableOpacity style={[styles.toggleBtn, viewMode === 'available' && styles.toggleActive]} onPress={() => setViewMode('available')}>
+                        <Text style={[styles.toggleText, viewMode === 'available' && styles.toggleTextActive]}>Available</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.toggleBtn, viewMode === 'leased' && styles.toggleActive]} onPress={() => setViewMode('leased')}>
+                        <Text style={[styles.toggleText, viewMode === 'leased' && styles.toggleTextActive]}>My Leased</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
             <FlatList
                 data={properties}
@@ -130,6 +160,10 @@ const styles = StyleSheet.create({
         paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     },
     searchInput: { flex: 1, ...typography.bodyMd, color: colors.onSurface },
+    toggleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 99, borderWidth: 1, borderColor: colors.outlineVariant },
+    toggleActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    toggleText: { ...typography.labelMd, color: colors.onSurfaceVariant },
+    toggleTextActive: { color: colors.onPrimary },
     list: { padding: spacing.margin, paddingBottom: 100 },
     propCard: { marginBottom: spacing.md, overflow: 'hidden', position: 'relative' },
     propImg: { width: '100%', height: 200, backgroundColor: colors.surfaceContainerLow },

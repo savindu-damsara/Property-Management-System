@@ -1,4 +1,6 @@
 const Property = require('../models/Property');
+const Lease = require('../models/Lease');
+const Notice = require('../models/Notice');
 
 // GET /api/properties – all available (public)
 const getProperties = async (req, res) => {
@@ -88,6 +90,18 @@ const updateProperty = async (req, res) => {
             }
         }
         await p.save();
+
+        // Broadcast a generic automated Notice to the Tenant if there's an active Lease!
+        const activeLease = await Lease.findOne({ property: p._id, status: 'active' });
+        if (activeLease) {
+            await Notice.create({
+                owner: req.user.id,
+                property: p._id,
+                title: "Property Details Updated",
+                content: `The owner has modified the details or images for ${p.title}.`
+            });
+        }
+
         res.json(p);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -99,6 +113,11 @@ const deleteProperty = async (req, res) => {
     try {
         const p = await Property.findOne({ _id: req.params.id, owner: req.user.id });
         if (!p) return res.status(404).json({ message: 'Property not found' });
+        const activeLease = await Lease.findOne({ property: p._id, status: 'active' });
+        if (activeLease) {
+            return res.status(400).json({ message: 'Cannot delete a property that is currently leased.' });
+        }
+
         p.isDeleted = true;
         await p.save();
         res.json({ message: 'Property removed from listing' });
