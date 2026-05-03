@@ -11,8 +11,12 @@ import Input from '../../components/Input';
 import Button from '../../components/Button';
 import { colors, typography, spacing, radius } from '../../constants/theme';
 
-const PROPERTY_TYPES = ['apartment', 'house', 'villa', 'room', 'commercial'];
+const PROPERTY_TYPES = ['apartment', 'house', 'villa', 'room', 'commercial', 'others'];
 const AMENITIES_LIST = ['Parking', 'WiFi', 'Pool', 'Gym', 'Security', 'Balcony', 'Garden', 'AC', 'Generator'];
+
+const capitalizeWords = (str) => {
+    return str.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
 
 export default function AddEditPropertyScreen({ navigation, route }) {
     const editing = route?.params?.property;
@@ -35,6 +39,7 @@ export default function AddEditPropertyScreen({ navigation, route }) {
     const [errors, setErrors] = useState({});
 
     const setField = (k, v) => setForm(p => ({ ...p, [k]: v }));
+    const setCapitalizedField = (k, v, max) => setForm(p => ({ ...p, [k]: capitalizeWords(v).slice(0, max) }));
 
     const toggleAmenity = (a) => {
         setField('amenities', form.amenities.includes(a) ? form.amenities.filter(x => x !== a) : [...form.amenities, a]);
@@ -45,7 +50,7 @@ export default function AddEditPropertyScreen({ navigation, route }) {
         const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!perm.granted) { Alert.alert('Permission', 'Gallery access required'); return; }
         const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ['images'],
             allowsMultipleSelection: true,
             selectionLimit: 10 - images.length,
             quality: 0.8,
@@ -60,9 +65,18 @@ export default function AddEditPropertyScreen({ navigation, route }) {
     const validate = () => {
         const e = {};
         if (!form.title.trim()) e.title = 'Title required';
+        if (!form.description.trim()) e.description = 'Description required';
+        else if (form.description.trim().split(/\s+/).length > 500) e.description = 'Must be under 500 words';
         if (!form.address.trim()) e.address = 'Address required';
         if (!form.city.trim()) e.city = 'City required';
-        if (!form.rentPerMonth || isNaN(Number(form.rentPerMonth))) e.rentPerMonth = 'Valid rent amount required';
+        if (!form.bedrooms || isNaN(Number(form.bedrooms)) || Number(form.bedrooms) < 0) e.bedrooms = 'Required & >0';
+        if (!form.bathrooms || isNaN(Number(form.bathrooms)) || Number(form.bathrooms) < 0) e.bathrooms = 'Required & >0';
+        if (!form.area || isNaN(Number(form.area)) || Number(form.area) <= 0) e.area = 'Positive area required';
+        if (!form.rentPerMonth || isNaN(Number(form.rentPerMonth)) || Number(form.rentPerMonth) <= 0) e.rentPerMonth = 'Valid positive rent required';
+        if (images.length === 0) {
+            Alert.alert('Validation Error', 'You must upload at least one image.');
+            return false;
+        }
         setErrors(e);
         return Object.keys(e).length === 0;
     };
@@ -96,18 +110,22 @@ export default function AddEditPropertyScreen({ navigation, route }) {
     };
 
     return (
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <ScreenHeader
                 title={editing ? 'Edit Property' : 'New Property'}
                 subtitle={editing ? 'Update your listing' : 'Add a new rental listing'}
                 onBack={() => navigation.goBack()}
             />
-            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+            <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: Platform.OS === 'android' ? 150 : 40 }]} keyboardShouldPersistTaps="handled">
                 <Text style={styles.section}>Property Details</Text>
-                <Input label="Property Title*" placeholder="e.g. Modern 3BR Apartment in Colombo" value={form.title} onChangeText={v => setField('title', v)} error={errors.title} />
-                <Input label="Description" placeholder="Describe your property..." value={form.description} onChangeText={v => setField('description', v)} multiline numberOfLines={4} />
-                <Input label="Address*" placeholder="No. 12, Temple Road" value={form.address} onChangeText={v => setField('address', v)} error={errors.address} />
-                <Input label="City*" placeholder="Colombo" value={form.city} onChangeText={v => setField('city', v)} error={errors.city} />
+
+                <Input label={`Property Title* (${form.title.length}/30)`} placeholder="e.g. Modern 3BR Apartment in Colombo" value={form.title} onChangeText={v => setCapitalizedField('title', v, 30)} error={errors.title} maxLength={30} />
+
+                <Input label="Description*" placeholder="Describe your property (Max 500 words)..." value={form.description} onChangeText={v => setCapitalizedField('description', v, 5000)} multiline numberOfLines={4} error={errors.description} />
+
+                <Input label={`Address* (${form.address.length}/50)`} placeholder="No. 12, Temple Road" value={form.address} onChangeText={v => setCapitalizedField('address', v, 50)} error={errors.address} maxLength={50} />
+
+                <Input label={`City* (${form.city.length}/30)`} placeholder="Colombo" value={form.city} onChangeText={v => setCapitalizedField('city', v, 30)} error={errors.city} maxLength={30} />
 
                 <Text style={styles.section}>Property Type</Text>
                 <View style={styles.typeRow}>
@@ -120,11 +138,11 @@ export default function AddEditPropertyScreen({ navigation, route }) {
 
                 <Text style={styles.section}>Specs & Pricing</Text>
                 <View style={styles.row}>
-                    <Input label="Bedrooms" placeholder="3" value={form.bedrooms} onChangeText={v => setField('bedrooms', v)} keyboardType="numeric" style={styles.half} />
-                    <Input label="Bathrooms" placeholder="2" value={form.bathrooms} onChangeText={v => setField('bathrooms', v)} keyboardType="numeric" style={styles.half} />
+                    <Input label="Bedrooms" placeholder="3" value={form.bedrooms} onChangeText={v => setField('bedrooms', v)} keyboardType="numeric" style={styles.half} error={errors.bedrooms} />
+                    <Input label="Bathrooms" placeholder="2" value={form.bathrooms} onChangeText={v => setField('bathrooms', v)} keyboardType="numeric" style={styles.half} error={errors.bathrooms} />
                 </View>
                 <View style={styles.row}>
-                    <Input label="Area (sq ft)" placeholder="1200" value={form.area} onChangeText={v => setField('area', v)} keyboardType="numeric" style={styles.half} />
+                    <Input label="Area (sq ft)" placeholder="1200" value={form.area} onChangeText={v => setField('area', v)} keyboardType="numeric" style={styles.half} error={errors.area} />
                     <Input label="Rent/Month (LKR)*" placeholder="50000" value={form.rentPerMonth} onChangeText={v => setField('rentPerMonth', v)} keyboardType="numeric" style={styles.half} error={errors.rentPerMonth} />
                 </View>
 

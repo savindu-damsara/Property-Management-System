@@ -25,7 +25,7 @@ const createAppointment = async (req, res) => {
 
         const appt = await Appointment.create({
             property, tenant: req.user.id, owner: prop.owner,
-            date: new Date(date), time, location, nicFront, nicBack,
+            date: new Date(date), time, location: location.slice(0, 50), nicFront, nicBack,
         });
 
         await Notification.create({
@@ -105,7 +105,7 @@ const requestAppointmentChange = async (req, res) => {
         const appt = await Appointment.findOne({ _id: req.params.id, tenant: req.user.id });
         if (!appt) return res.status(404).json({ message: 'Appointment not found' });
 
-        appt.changeRequest = { date: new Date(date), time, location, status: 'pending' };
+        appt.changeRequest = { date: new Date(date), time, location: location.slice(0, 50), status: 'pending' };
         appt.status = 'change_requested';
         await appt.save();
 
@@ -200,7 +200,7 @@ const editAppointmentDirectly = async (req, res) => {
 
         appt.date = new Date(date);
         appt.time = time;
-        appt.location = location;
+        appt.location = location.slice(0, 50);
         await appt.save();
 
         await Notification.create({

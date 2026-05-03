@@ -1,19 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, RefreshControl,
-    TouchableOpacity, StatusBar, ActivityIndicator,
+    TouchableOpacity, StatusBar, ActivityIndicator, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
-import { propertiesAPI, appointmentsAPI, leasesAPI, maintenanceAPI, billsAPI } from '../../services/api';
+import { propertiesAPI, appointmentsAPI, leasesAPI, maintenanceAPI, billsAPI, BASE_URL } from '../../services/api';
 import Card from '../../components/Card';
 import Badge from '../../components/Badge';
 import { colors, typography, spacing, shadows } from '../../constants/theme';
 
 const formatLKR = (n) => `LKR ${Number(n || 0).toLocaleString()}`;
 
-export default function OwnerDashboard() {
+export default function OwnerDashboard({ navigation }) {
     const { user } = useAuth();
     const insets = useSafeAreaInsets();
     const [stats, setStats] = useState({ properties: 0, leases: 0, pendingAppts: 0, pendingMaint: 0, monthlyIncome: 0 });
@@ -69,15 +69,19 @@ export default function OwnerDashboard() {
             <StatusBar barStyle="dark-content" backgroundColor={colors.surfaceContainerLowest} />
             {/* Top App Bar */}
             <View style={styles.appBar}>
-                <View style={styles.appBarLeft}>
-                    <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{(user?.name || 'O')[0].toUpperCase()}</Text>
-                    </View>
+                <TouchableOpacity style={styles.appBarLeft} onPress={() => navigation.navigate('Profile')} activeOpacity={0.8}>
+                    {user?.avatar ? (
+                        <Image key={user.avatar} source={{ uri: `${BASE_URL}${user.avatar}` }} style={styles.avatar} />
+                    ) : (
+                        <View style={styles.avatar}>
+                            <Text style={styles.avatarText}>{(user?.name || 'O')[0].toUpperCase()}</Text>
+                        </View>
+                    )}
                     <View>
                         <Text style={styles.greetSub}>Good day,</Text>
                         <Text style={styles.greetName} numberOfLines={1}>{user?.name?.split(' ')[0]}</Text>
                     </View>
-                </View>
+                </TouchableOpacity>
                 {stats.pendingAppts > 0 && (
                     <View style={styles.notifBadge}>
                         <Ionicons name="notifications" size={22} color={colors.primary} />

@@ -2,32 +2,38 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
 const { requireRole } = require('../middleware/role');
-const upload = require('../middleware/upload');
+const { uploadImages } = require('../middleware/upload');
+
 const {
     createMaintenanceRequest,
     getMaintenanceRequests,
     getMaintenanceRequestById,
-    updateMaintenanceRequest,
-    deleteMaintenanceRequest,
-    approveMaintenanceRequest
+    editMaintenanceDirectly,
+    deleteMaintenanceDirectly,
+    requestEditMaintenance,
+    requestDeleteMaintenance,
+    approveEditRequest,
+    approveDeleteRequest,
+    approveMaintenanceRequest,
+    ownerCancelMaintenance
 } = require('../controllers/maintenanceController');
 
-// POST /api/maintenance – tenant creates request
-router.post('/', protect, requireRole('tenant'), upload.single('image'), createMaintenanceRequest);
-
-// GET /api/maintenance – get mine
+router.post('/', protect, requireRole('tenant'), uploadImages.array('images', 5), createMaintenanceRequest);
 router.get('/', protect, getMaintenanceRequests);
-
-// GET /api/maintenance/:id
 router.get('/:id', protect, getMaintenanceRequestById);
 
-// PUT /api/maintenance/:id – tenant requests update
-router.put('/:id', protect, requireRole('tenant'), upload.single('image'), updateMaintenanceRequest);
+// Tenant direct actions for pending
+router.put('/:id/edit', protect, requireRole('tenant'), uploadImages.array('images', 5), editMaintenanceDirectly);
+router.delete('/:id/delete', protect, requireRole('tenant'), deleteMaintenanceDirectly);
 
-// DELETE /api/maintenance/:id – tenant requests deletion
-router.delete('/:id', protect, requireRole('tenant'), deleteMaintenanceRequest);
+// Tenant request actions for approved
+router.post('/:id/request-edit', protect, requireRole('tenant'), uploadImages.array('images', 5), requestEditMaintenance);
+router.post('/:id/request-delete', protect, requireRole('tenant'), requestDeleteMaintenance);
 
-// PATCH /api/maintenance/:id/approve – owner approves/rejects
+// Owner approvals
 router.patch('/:id/approve', protect, requireRole('owner'), approveMaintenanceRequest);
+router.patch('/:id/approve-edit', protect, requireRole('owner'), approveEditRequest);
+router.patch('/:id/approve-delete', protect, requireRole('owner'), approveDeleteRequest);
+router.patch('/:id/owner-cancel', protect, requireRole('owner'), ownerCancelMaintenance);
 
 module.exports = router;

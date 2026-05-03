@@ -3,11 +3,15 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { colors, spacing } from './constants/theme';
+import { colors, spacing, typography } from './constants/theme';
+import { authAPI } from './services/api';
+
+const NotificationContext = React.createContext({ appointments: 0, leases: 0, bills: 0, maintenance: 0, notices: 0, clearBadge: () => { } });
 
 // Auth Screens
 import LoginScreen from './screens/auth/LoginScreen';
@@ -64,6 +68,9 @@ function OwnerStack() {
 
 function OwnerTabs() {
   const insets = useSafeAreaInsets();
+  const counts = React.useContext(NotificationContext);
+  const moreCount = counts.leases + counts.bills + counts.maintenance;
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -80,8 +87,8 @@ function OwnerTabs() {
     >
       <Tab.Screen name="Dashboard" component={OwnerDashboardStack} />
       <Tab.Screen name="Properties" component={OwnerStack} />
-      <Tab.Screen name="Appointments" component={AppointmentsOwnerScreen} />
-      <Tab.Screen name="More" component={OwnerMoreStack} />
+      <Tab.Screen name="Appointments" component={AppointmentsOwnerScreen} options={{ tabBarBadge: counts.appointments > 0 ? counts.appointments : null }} />
+      <Tab.Screen name="More" component={OwnerMoreStack} options={{ tabBarBadge: moreCount > 0 ? moreCount : null }} />
     </Tab.Navigator>
   );
 }
@@ -90,6 +97,7 @@ function OwnerDashboardStack() {
   return (
     <Stack.Navigator screenOptions={screenOpts}>
       <Stack.Screen name="OwnerDashboard" component={OwnerDashboard} />
+      <Stack.Screen name="Profile" component={ProfileScreen} />
     </Stack.Navigator>
   );
 }
@@ -113,7 +121,9 @@ function TenantMoreStack() {
   return (
     <Stack.Navigator screenOptions={screenOpts}>
       <Stack.Screen name="TenantMore" component={TenantMoreScreen} />
+      <Stack.Screen name="PropertyDetail" component={PropertyDetailScreen} />
       <Stack.Screen name="Leases" component={LeasesTenantScreen} />
+      <Stack.Screen name="RequestLease" component={RequestLeaseScreen} />
       <Stack.Screen name="Billing" component={BillingTenantScreen} />
       <Stack.Screen name="Maintenance" component={MaintenanceTenantScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
@@ -136,12 +146,16 @@ function TenantDashboardStack() {
   return (
     <Stack.Navigator screenOptions={screenOpts}>
       <Stack.Screen name="TenantDashboard" component={TenantDashboard} />
+      <Stack.Screen name="PropertyDetail" component={PropertyDetailScreen} />
+      <Stack.Screen name="Profile" component={ProfileScreen} />
     </Stack.Navigator>
   );
 }
 
 function TenantTabs() {
   const insets = useSafeAreaInsets();
+  const counts = React.useContext(NotificationContext);
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -158,8 +172,8 @@ function TenantTabs() {
     >
       <Tab.Screen name="Dashboard" component={TenantDashboardStack} />
       <Tab.Screen name="Explorer" component={TenantExplorerStack} />
-      <Tab.Screen name="Appointments" component={AppointmentsTenantStack} />
-      <Tab.Screen name="Notices" component={NoticeBoardScreen} />
+      <Tab.Screen name="Appointments" component={AppointmentsTenantStack} options={{ tabBarBadge: counts.appointments > 0 ? counts.appointments : null }} />
+      <Tab.Screen name="Notices" component={NoticeBoardScreen} options={{ tabBarBadge: counts.notices > 0 ? counts.notices : null }} />
       <Tab.Screen name="More" component={TenantMoreStack} />
     </Tab.Navigator>
   );
@@ -176,10 +190,11 @@ function AppointmentsTenantStack() {
 // ─── More screens (placeholder components defined inline) ──────────────────
 function OwnerMoreScreen({ navigation }) {
   const { logout } = useAuth();
+  const counts = React.useContext(NotificationContext);
   const items = [
-    { label: 'Leases & Contracts', icon: 'document-text', screen: 'Leases' },
-    { label: 'Billing & Payments', icon: 'card', screen: 'Billing' },
-    { label: 'Maintenance', icon: 'build', screen: 'Maintenance' },
+    { label: 'Leases & Contracts', icon: 'document-text', screen: 'Leases', badge: counts.leases },
+    { label: 'Billing & Payments', icon: 'card', screen: 'Billing', badge: counts.bills },
+    { label: 'Maintenance', icon: 'build', screen: 'Maintenance', badge: counts.maintenance },
     { label: 'Notice Board', icon: 'megaphone', screen: 'Notices' },
     { label: 'Profile', icon: 'person', screen: 'Profile' },
   ];
@@ -197,7 +212,7 @@ function TenantMoreScreen({ navigation }) {
   return <MoreMenu items={items} navigation={navigation} onLogout={logout} />;
 }
 
-import { TouchableOpacity, Text, ScrollView } from 'react-native';
+import { TouchableOpacity, ScrollView } from 'react-native';
 function MoreMenu({ items, navigation, onLogout }) {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: spacing.margin, paddingTop: 60 }}>
@@ -213,6 +228,11 @@ function MoreMenu({ items, navigation, onLogout }) {
             <Ionicons name={item.icon} size={22} color={colors.primary} />
           </View>
           <Text style={styles.moreLabel}>{item.label}</Text>
+          {item.badge > 0 && (
+            <View style={styles.badgeCircle}>
+              <Text style={styles.badgeText}>{item.badge}</Text>
+            </View>
+          )}
           <Ionicons name="chevron-forward" size={18} color={colors.outline} />
         </TouchableOpacity>
       ))}
@@ -229,6 +249,24 @@ function MoreMenu({ items, navigation, onLogout }) {
 // ─── Root Navigator ─────────────────────────────────────────────────────────
 function RootNavigator() {
   const { user, loading } = useAuth();
+  const [badgeCounts, setBadgeCounts] = React.useState({ appointments: 0, leases: 0, bills: 0, maintenance: 0, notices: 0 });
+
+  const clearBadge = React.useCallback((type) => {
+    setBadgeCounts(prev => ({ ...prev, [type]: 0 }));
+  }, []);
+
+  React.useEffect(() => {
+    if (!user) return;
+    const fetchCounts = async () => {
+      try {
+        const { data } = await authAPI.getNotifications();
+        setBadgeCounts(data || { appointments: 0, leases: 0, bills: 0, maintenance: 0, notices: 0 });
+      } catch (err) { }
+    };
+    fetchCounts();
+    const intervalId = setInterval(fetchCounts, 15000);
+    return () => clearInterval(intervalId);
+  }, [user]);
 
   if (loading) {
     return (
@@ -247,19 +285,25 @@ function RootNavigator() {
     );
   }
 
-  return user.role === 'owner' ? <OwnerTabs /> : <TenantTabs />;
+  return (
+    <NotificationContext.Provider value={{ ...badgeCounts, clearBadge }}>
+      {user.role === 'owner' ? <OwnerTabs /> : <TenantTabs />}
+    </NotificationContext.Provider>
+  );
 }
 
 // ─── App Root ───────────────────────────────────────────────────────────────
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <NavigationContainer>
-          <RootNavigator />
-        </NavigationContainer>
-      </AuthProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <NavigationContainer>
+            <RootNavigator />
+          </NavigationContainer>
+        </AuthProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -296,4 +340,15 @@ const styles = StyleSheet.create({
     marginRight: spacing.md,
   },
   moreLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.onSurface },
+  badgeCircle: {
+    backgroundColor: colors.error,
+    borderRadius: 99,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    paddingHorizontal: 5
+  },
+  badgeText: { ...typography.labelMd, fontSize: 11, color: colors.onError },
 });
