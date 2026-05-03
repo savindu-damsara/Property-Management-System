@@ -7,18 +7,22 @@ const appointmentSchema = new mongoose.Schema({
     date: { type: Date, required: true },
     time: { type: String, required: true }, // "14:30"
     location: { type: String, required: true },
-    receipt: { type: String }, // uploaded file URL
+    nicFront: { type: String, required: true },
+    nicBack: { type: String, required: true },
     status: {
         type: String,
-        enum: ['pending', 'accepted', 'rejected', 'change_requested'],
+        enum: ['pending', 'accepted', 'rejected', 'change_requested', 'cancelled'],
         default: 'pending',
     },
     rejectionReason: { type: String },
+    cancellationReason: { type: String },
     changeRequest: {
         date: Date,
         time: String,
         location: String,
         status: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' },
+        isCancellation: { type: Boolean, default: false },
+        cancellationReason: { type: String },
     },
 }, { timestamps: true });
 

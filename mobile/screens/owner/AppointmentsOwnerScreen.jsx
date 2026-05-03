@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TouchableOpacity,
-    Modal, TextInput, Alert, RefreshControl,
+    Modal, TextInput, Alert, RefreshControl, Linking,
+    KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { appointmentsAPI } from '../../services/api';
+import { useFocusEffect } from '@react-navigation/native';
+import { appointmentsAPI, authAPI, BASE_URL } from '../../services/api';
 import Card from '../../components/Card';
 import Badge from '../../components/Badge';
 import Button from '../../components/Button';
@@ -18,6 +20,8 @@ export default function AppointmentsOwnerScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [rejectModal, setRejectModal] = useState(null); // appointment being rejected
     const [reason, setReason] = useState('');
+    const [cancelModal, setCancelModal] = useState(null);
+    const [cancelReason, setCancelReason] = useState('');
     const [filter, setFilter] = useState('all');
 
     const load = useCallback(async () => {
@@ -31,6 +35,11 @@ export default function AppointmentsOwnerScreen() {
             setRefreshing(false);
         }
     }, []);
+
+    useFocusEffect(useCallback(() => {
+        load();
+        authAPI.clearNotification('appointments').catch(() => { });
+    }, [load]));
 
     useEffect(() => { load(); }, [load]);
 
@@ -54,7 +63,16 @@ export default function AppointmentsOwnerScreen() {
         }
     };
 
-    const FILTERS = ['all', 'pending', 'accepted', 'rejected', 'change_requested'];
+    const handleOwnerCancel = async () => {
+        if (!cancelReason.trim()) { Alert.alert('Error', 'Reason is required'); return; }
+        try {
+            await appointmentsAPI.ownerCancel(cancelModal._id, { reason: cancelReason.trim() });
+            setCancelModal(null); setCancelReason(''); load();
+            Alert.alert('Success', 'Appointment canceled');
+        } catch (err) { Alert.alert('Error', err?.response?.data?.message || 'Failed'); }
+    };
+
+    const FILTERS = ['all', 'pending', 'accepted', 'rejected', 'change_requested', 'cancelled'];
     const filtered = filter === 'all' ? appointments : appointments.filter(a => a.status === filter);
 
     const renderItem = ({ item }) => (
@@ -85,6 +103,26 @@ export default function AppointmentsOwnerScreen() {
                 </View>
             </View>
 
+            {(item.nicFront || item.nicBack) && (
+                <View style={[styles.changeBox, { backgroundColor: colors.surfaceContainerHighest }]}>
+                    <Text style={styles.reasonLabel}>NIC Validation Photos:</Text>
+                    <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: 4 }}>
+                        {item.nicFront && (
+                            <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 }} onPress={() => Linking.openURL(`${BASE_URL}${item.nicFront}`)}>
+                                <Ionicons name="id-card-outline" size={16} color={colors.primary} />
+                                <Text style={{ ...typography.labelMd, color: colors.primary }}>View Front</Text>
+                            </TouchableOpacity>
+                        )}
+                        {item.nicBack && (
+                            <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 }} onPress={() => Linking.openURL(`${BASE_URL}${item.nicBack}`)}>
+                                <Ionicons name="card-outline" size={16} color={colors.primary} />
+                                <Text style={{ ...typography.labelMd, color: colors.primary }}>View Back</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </View>
+            )}
+
             {item.status === 'rejected' && item.rejectionReason && (
                 <View style={styles.reasonBox}>
                     <Text style={styles.reasonLabel}>Rejection reason:</Text>
@@ -92,16 +130,42 @@ export default function AppointmentsOwnerScreen() {
                 </View>
             )}
 
+            {item.status === 'cancelled' && (
+                <View style={[styles.reasonBox, { backgroundColor: colors.outlineVariant + '40' }]}>
+                    <Text style={[styles.reasonLabel, { color: colors.onSurface }]}>Canceled</Text>
+                    {item.cancellationReason && <Text style={styles.reasonText}>Reason: {item.cancellationReason}</Text>}
+                </View>
+            )}
+
             {item.status === 'change_requested' && item.changeRequest && (
-                <View style={styles.changeBox}>
-                    <Text style={styles.reasonLabel}>Tenant requested change:</Text>
-                    <Text style={styles.reasonText}>
-                        {new Date(item.changeRequest.date).toLocaleDateString()} • {item.changeRequest.time} • {item.changeRequest.location}
-                    </Text>
-                    <View style={styles.btnRow}>
-                        <Button title="Accept Change" onPress={() => handleChangeRequest(item._id, 'accepted')} size="sm" style={styles.half} />
-                        <Button title="Reject Change" onPress={() => handleChangeRequest(item._id, 'rejected')} variant="outline" size="sm" style={styles.half} />
+                item.changeRequest.isCancellation ? (
+                    <View style={styles.changeBox}>
+                        <Text style={styles.reasonLabel}>⚠️ Tenant requests cancelation</Text>
+                        {item.changeRequest.cancellationReason ? (
+                            <Text style={styles.reasonText}>Reason: {item.changeRequest.cancellationReason}</Text>
+                        ) : null}
+                        <View style={styles.btnRow}>
+                            <Button title="Accept Cancel Request" variant="danger" onPress={() => handleChangeRequest(item._id, 'accepted')} size="sm" style={styles.half} />
+                            <Button title="Decline" onPress={() => handleChangeRequest(item._id, 'rejected')} variant="outline" size="sm" style={styles.half} />
+                        </View>
                     </View>
+                ) : (
+                    <View style={styles.changeBox}>
+                        <Text style={styles.reasonLabel}>Tenant requested reschedule:</Text>
+                        <Text style={styles.reasonText}>
+                            {new Date(item.changeRequest.date).toLocaleDateString()} • {item.changeRequest.time} • {item.changeRequest.location}
+                        </Text>
+                        <View style={styles.btnRow}>
+                            <Button title="Accept Change" onPress={() => handleChangeRequest(item._id, 'accepted')} size="sm" style={styles.half} />
+                            <Button title="Reject Change" onPress={() => handleChangeRequest(item._id, 'rejected')} variant="outline" size="sm" style={styles.half} />
+                        </View>
+                    </View>
+                )
+            )}
+
+            {item.status === 'accepted' && (
+                <View style={styles.btnRow}>
+                    <Button title="Cancel Appointment" variant="danger" onPress={() => { setCancelModal(item); setCancelReason(''); }} size="sm" style={styles.half} />
                 </View>
             )}
 
@@ -155,7 +219,7 @@ export default function AppointmentsOwnerScreen() {
 
             {/* Rejection Modal */}
             <Modal visible={!!rejectModal} transparent animationType="slide" onRequestClose={() => setRejectModal(null)}>
-                <View style={styles.overlay}>
+                <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
                     <View style={styles.modal}>
                         <Text style={styles.modalTitle}>Rejection Reason</Text>
                         <Text style={styles.modalSub}>Please provide a reason for rejecting this appointment</Text>
@@ -181,7 +245,35 @@ export default function AppointmentsOwnerScreen() {
                             />
                         </View>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
+            </Modal>
+
+            {/* Cancel Modal */}
+            <Modal visible={!!cancelModal} transparent animationType="slide" onRequestClose={() => setCancelModal(null)}>
+                <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                    <View style={styles.modal}>
+                        <Text style={styles.modalTitle}>Cancel Appointment</Text>
+                        <Text style={styles.modalSub}>Provide a reason for canceling this accepted appointment to notify the tenant.</Text>
+                        <TextInput
+                            style={styles.reasonInput}
+                            placeholder="Enter reason..."
+                            placeholderTextColor={colors.outline}
+                            value={cancelReason}
+                            onChangeText={setCancelReason}
+                            multiline
+                            numberOfLines={4}
+                        />
+                        <View style={styles.modalBtns}>
+                            <Button title="Go Back" variant="ghost" onPress={() => setCancelModal(null)} style={styles.half} />
+                            <Button
+                                title="Confirm Cancel"
+                                variant="danger"
+                                onPress={handleOwnerCancel}
+                                style={styles.half}
+                            />
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
             </Modal>
         </View>
     );
