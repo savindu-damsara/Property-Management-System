@@ -8,7 +8,7 @@ const debuggerHost = Constants.expoConfig?.hostUri;
 const ipAddress = debuggerHost ? debuggerHost.split(':')[0] : (Platform.OS === 'android' ? '10.0.2.2' : '192.168.1.8');
 
 // Explicit hardcode derived from IP config to securely force physical dev device connections.
-export const BASE_URL = `http://192.168.1.8:5000`;
+export const BASE_URL = `https://property-management-system-production-f7ed.up.railway.app`;
 
 const api = axios.create({
     baseURL: `${BASE_URL}/api`,
