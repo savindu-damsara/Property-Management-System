@@ -1,6 +1,7 @@
 const Property = require('../models/Property');
 const Lease = require('../models/Lease');
 const Notice = require('../models/Notice');
+const Notification = require('../models/Notification');
 
 // GET /api/properties – all available (public)
 const getProperties = async (req, res) => {
@@ -56,7 +57,7 @@ const createProperty = async (req, res) => {
 
         const images = req.files ? req.files.map(f => `/uploads/${f.filename}`) : [];
         const property = await Property.create({
-            owner: req.user.id, title, description, address, city, propertyType,
+            owner: req.user.id, title: title.slice(0, 30), description, address: address.slice(0, 50), city: city.slice(0, 30), propertyType,
             bedrooms: Number(bedrooms) || 0, bathrooms: Number(bathrooms) || 0,
             area: Number(area) || 0, rentPerMonth: Number(rentPerMonth),
             images, amenities: amenities ? (Array.isArray(amenities) ? amenities : amenities.split(',').map(a => a.trim())) : [],
@@ -75,7 +76,13 @@ const updateProperty = async (req, res) => {
         if (!p) return res.status(404).json({ message: 'Property not found' });
 
         const fields = ['title', 'description', 'address', 'city', 'propertyType', 'bedrooms', 'bathrooms', 'area', 'rentPerMonth', 'isAvailable'];
-        fields.forEach(f => { if (req.body[f] !== undefined) p[f] = req.body[f]; });
+        fields.forEach(f => {
+            if (req.body[f] !== undefined) {
+                if (f === 'title' || f === 'city') p[f] = req.body[f].slice(0, 30);
+                else if (f === 'address') p[f] = req.body[f].slice(0, 50);
+                else p[f] = req.body[f];
+            }
+        });
 
         if (req.body.amenities) {
             p.amenities = Array.isArray(req.body.amenities) ? req.body.amenities : req.body.amenities.split(',').map(a => a.trim());
@@ -96,7 +103,7 @@ const updateProperty = async (req, res) => {
         if (activeLease) {
             await Notice.create({
                 owner: req.user.id,
-                property: p._id,
+                targetProperties: [p._id],
                 title: "Property Details Updated",
                 content: `The owner has modified the details or images for ${p.title}.`
             });

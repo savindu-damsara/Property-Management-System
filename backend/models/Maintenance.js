@@ -6,18 +6,25 @@ const maintenanceSchema = new mongoose.Schema({
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true },
     description: { type: String, required: true },
-    image: { type: String }, // optional supporting image
+    images: [{ type: String }], // Array for multiple images (up to 5)
     priority: { type: String, enum: ['low', 'medium', 'high', 'urgent'], default: 'medium' },
     status: {
         type: String,
-        enum: ['pending_approval', 'approved', 'rejected', 'in_progress', 'completed', 'pending_deletion', 'cancelled', 'pending_update'],
+        enum: ['pending_approval', 'approved', 'rejected', 'in_progress', 'completed', 'cancelled'],
         default: 'pending_approval',
     },
-    pendingUpdate: {
+    editRequest: {
         title: String,
         description: String,
         priority: String,
-        image: String,
+        images: [{ type: String }],
+        status: { type: String, enum: ['pending', 'rejected', 'approved'] },
+        rejectionReason: String,
+    },
+    deleteRequest: {
+        reason: String,
+        status: { type: String, enum: ['pending', 'rejected', 'approved'] },
+        rejectionReason: String,
     },
     rejectionReason: { type: String },
 }, { timestamps: true });

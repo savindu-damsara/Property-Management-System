@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, Alert, RefreshControl, Platform,
-    KeyboardAvoidingView, Linking
+    KeyboardAvoidingView, Linking, ScrollView
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -135,8 +135,8 @@ export default function AppointmentsTenantScreen() {
         }
         return (
             <>
-                {showDatePicker && <DateTimePicker value={changeDate} mode="date" display="default" minimumDate={new Date()} onChange={onDateChange} />}
-                {showTimePicker && <DateTimePicker value={changeDate} mode="time" display="default" minimumDate={new Date()} onChange={onTimeChange} />}
+                {showDatePicker && <DateTimePicker value={changeDate} mode="date" display="default" minimumDate={new Date()} onChange={({ type }, d) => { setShowDatePicker(false); if (type === 'set' && d) onDateChange(null, d); }} />}
+                {showTimePicker && <DateTimePicker value={changeDate} mode="time" display="default" minimumDate={new Date()} onChange={({ type }, d) => { setShowTimePicker(false); if (type === 'set' && d) onTimeChange(null, d); }} />}
             </>
         );
     };
@@ -269,7 +269,7 @@ export default function AppointmentsTenantScreen() {
 
             <Modal visible={!!changeModal} transparent animationType="slide" onRequestClose={() => setChangeModal(null)}>
                 <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-                    <View style={styles.modal}>
+                    <ScrollView style={[styles.modal, { paddingBottom: Platform.OS === 'android' ? 150 : 40 }]} keyboardShouldPersistTaps="handled">
                         <Text style={styles.modalTitle}>Request Reschedule</Text>
 
                         <TouchableOpacity onPress={() => setShowDatePicker(true)} activeOpacity={0.8}>
@@ -286,19 +286,19 @@ export default function AppointmentsTenantScreen() {
 
                         {renderDateTimePicker()}
 
-                        <Input label="New Location" placeholder="Meeting location" value={changeForm.location} onChangeText={v => setChangeForm(p => ({ ...p, location: v }))} />
+                        <Input label={`New Location (${(changeForm.location || '').length}/50)`} placeholder="Meeting location" value={changeForm.location} onChangeText={v => setChangeForm(p => ({ ...p, location: v }))} maxLength={50} />
                         <View style={styles.modalBtns}>
                             <Button title="Cancel" variant="ghost" style={styles.half} onPress={() => setChangeModal(null)} />
                             <Button title="Send Request" style={styles.half} onPress={handleChangeRequest} />
                         </View>
-                    </View>
+                    </ScrollView>
                 </KeyboardAvoidingView>
             </Modal>
 
             {/* Cancellation Modal */}
             <Modal visible={!!cancelModal} transparent animationType="slide" onRequestClose={() => setCancelModal(null)}>
                 <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-                    <View style={styles.modal}>
+                    <ScrollView style={[styles.modal, { paddingBottom: Platform.OS === 'android' ? 150 : 40 }]} keyboardShouldPersistTaps="handled">
                         <Text style={styles.modalTitle}>Request Cancellation</Text>
                         <Text style={{ ...typography.bodySm, color: colors.onSurfaceVariant, marginBottom: spacing.sm }}>
                             Please provide a reason for cancelling this appointment. The owner must approve.
@@ -316,7 +316,7 @@ export default function AppointmentsTenantScreen() {
                             <Button title="Back" variant="ghost" style={styles.half} onPress={() => setCancelModal(null)} />
                             <Button title="Send Request" variant="danger" style={styles.half} onPress={handleRequestCancel} />
                         </View>
-                    </View>
+                    </ScrollView>
                 </KeyboardAvoidingView>
             </Modal>
         </View>

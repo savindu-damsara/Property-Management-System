@@ -39,7 +39,7 @@ export default function AddEditPropertyScreen({ navigation, route }) {
     const [errors, setErrors] = useState({});
 
     const setField = (k, v) => setForm(p => ({ ...p, [k]: v }));
-    const setCapitalizedField = (k, v) => setForm(p => ({ ...p, [k]: capitalizeWords(v) }));
+    const setCapitalizedField = (k, v, max) => setForm(p => ({ ...p, [k]: capitalizeWords(v).slice(0, max) }));
 
     const toggleAmenity = (a) => {
         setField('amenities', form.amenities.includes(a) ? form.amenities.filter(x => x !== a) : [...form.amenities, a]);
@@ -50,7 +50,7 @@ export default function AddEditPropertyScreen({ navigation, route }) {
         const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!perm.granted) { Alert.alert('Permission', 'Gallery access required'); return; }
         const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ['images'],
             allowsMultipleSelection: true,
             selectionLimit: 10 - images.length,
             quality: 0.8,
@@ -110,18 +110,22 @@ export default function AddEditPropertyScreen({ navigation, route }) {
     };
 
     return (
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <ScreenHeader
                 title={editing ? 'Edit Property' : 'New Property'}
                 subtitle={editing ? 'Update your listing' : 'Add a new rental listing'}
                 onBack={() => navigation.goBack()}
             />
-            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+            <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: Platform.OS === 'android' ? 150 : 40 }]} keyboardShouldPersistTaps="handled">
                 <Text style={styles.section}>Property Details</Text>
-                <Input label="Property Title*" placeholder="e.g. Modern 3BR Apartment in Colombo" value={form.title} onChangeText={v => setCapitalizedField('title', v)} error={errors.title} />
-                <Input label="Description*" placeholder="Describe your property (Max 500 words)..." value={form.description} onChangeText={v => setCapitalizedField('description', v)} multiline numberOfLines={4} error={errors.description} />
-                <Input label="Address*" placeholder="No. 12, Temple Road" value={form.address} onChangeText={v => setCapitalizedField('address', v)} error={errors.address} />
-                <Input label="City*" placeholder="Colombo" value={form.city} onChangeText={v => setCapitalizedField('city', v)} error={errors.city} />
+
+                <Input label={`Property Title* (${form.title.length}/30)`} placeholder="e.g. Modern 3BR Apartment in Colombo" value={form.title} onChangeText={v => setCapitalizedField('title', v, 30)} error={errors.title} maxLength={30} />
+
+                <Input label="Description*" placeholder="Describe your property (Max 500 words)..." value={form.description} onChangeText={v => setCapitalizedField('description', v, 5000)} multiline numberOfLines={4} error={errors.description} />
+
+                <Input label={`Address* (${form.address.length}/50)`} placeholder="No. 12, Temple Road" value={form.address} onChangeText={v => setCapitalizedField('address', v, 50)} error={errors.address} maxLength={50} />
+
+                <Input label={`City* (${form.city.length}/30)`} placeholder="Colombo" value={form.city} onChangeText={v => setCapitalizedField('city', v, 30)} error={errors.city} maxLength={30} />
 
                 <Text style={styles.section}>Property Type</Text>
                 <View style={styles.typeRow}>

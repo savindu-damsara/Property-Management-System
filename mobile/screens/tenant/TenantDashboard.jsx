@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl,
+    View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
-import { appointmentsAPI, leasesAPI, maintenanceAPI, billsAPI } from '../../services/api';
+import { appointmentsAPI, leasesAPI, maintenanceAPI, billsAPI, BASE_URL } from '../../services/api';
 import Card from '../../components/Card';
 import Badge from '../../components/Badge';
 import { colors, typography, spacing, shadows } from '../../constants/theme';
 
 const formatLKR = (n) => `LKR ${Number(n || 0).toLocaleString()}`;
 
-export default function TenantDashboard() {
+export default function TenantDashboard({ navigation }) {
     const { user } = useAuth();
     const insets = useSafeAreaInsets();
     const [stats, setStats] = useState({ activeLease: null, pendingAppts: 0, pendingMaint: 0, remainingRent: 0 });
@@ -22,18 +22,22 @@ export default function TenantDashboard() {
 
     const load = useCallback(async () => {
         try {
-            const [apptsRes, leasesRes, maintRes, billsRes] = await Promise.all([
-                appointmentsAPI.getAll(),
-                leasesAPI.getAll(),
-                maintenanceAPI.getAll(),
-                billsAPI.getAll(),
-            ]);
-            const appts = apptsRes.data || [];
+            const leasesRes = await leasesAPI.getAll();
             const leases = leasesRes.data || [];
+            const activeLease = leases.find(l => l.status === 'active');
+
+            const propId = activeLease?.property?._id || activeLease?.property;
+
+            const [apptsRes, maintRes, billsRes] = await Promise.all([
+                appointmentsAPI.getAll(),
+                maintenanceAPI.getAll(),
+                propId ? billsAPI.getAll({ property: propId }) : Promise.resolve({ data: { stats: { remainingRent: 0 } } })
+            ]);
+
+            const appts = apptsRes.data || [];
             const maint = maintRes.data || [];
             const { stats: bs } = billsRes.data || {};
 
-            const activeLease = leases.find(l => l.status === 'active');
             setStats({
                 activeLease,
                 pendingAppts: appts.filter(a => a.status === 'pending').length,
@@ -50,15 +54,19 @@ export default function TenantDashboard() {
     return (
         <View style={[styles.screen, { paddingTop: insets.top }]}>
             <View style={styles.appBar}>
-                <View style={styles.appBarLeft}>
-                    <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{(user?.name || 'T')[0].toUpperCase()}</Text>
-                    </View>
+                <TouchableOpacity style={styles.appBarLeft} onPress={() => navigation.navigate('Profile')} activeOpacity={0.8}>
+                    {user?.avatar ? (
+                        <Image key={user.avatar} source={{ uri: `${BASE_URL}${user.avatar}` }} style={styles.avatar} />
+                    ) : (
+                        <View style={styles.avatar}>
+                            <Text style={styles.avatarText}>{(user?.name || 'T')[0].toUpperCase()}</Text>
+                        </View>
+                    )}
                     <View>
                         <Text style={styles.greetSub}>Hello,</Text>
                         <Text style={styles.greetName}>{user?.name?.split(' ')[0]}</Text>
                     </View>
-                </View>
+                </TouchableOpacity>
                 <View style={styles.tenantBadge}>
                     <Text style={styles.tenantBadgeText}>TENANT</Text>
                 </View>
@@ -71,7 +79,7 @@ export default function TenantDashboard() {
             >
                 {/* Active Lease Banner */}
                 {stats.activeLease ? (
-                    <View style={styles.leaseBanner}>
+                    <TouchableOpacity style={styles.leaseBanner} onPress={() => navigation.navigate('PropertyDetail', { id: stats.activeLease.property?._id })}>
                         <View style={styles.leaseBannerIcon}>
                             <Ionicons name="document-text" size={20} color={colors.onPrimary} />
                         </View>
@@ -81,7 +89,7 @@ export default function TenantDashboard() {
                             <Text style={styles.leaseBannerRent}>{formatLKR(stats.activeLease.rentAmount)}/month</Text>
                         </View>
                         <Badge status="active" />
-                    </View>
+                    </TouchableOpacity>
                 ) : (
                     <View style={[styles.leaseBanner, { backgroundColor: colors.surfaceContainerLow }]}>
                         <Ionicons name="home-outline" size={24} color={colors.onSurfaceVariant} />

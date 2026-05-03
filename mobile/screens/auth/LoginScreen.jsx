@@ -11,7 +11,6 @@ import { colors, typography, spacing, radius, shadows } from '../../constants/th
 
 export default function LoginScreen({ navigation }) {
     const { login } = useAuth();
-    const [role, setRole] = useState('tenant');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -20,7 +19,7 @@ export default function LoginScreen({ navigation }) {
     const validate = () => {
         const e = {};
         if (!email.trim()) e.email = 'Email is required';
-        else if (!/\S+@\S+\.\S+/.test(email)) e.email = 'Invalid email';
+        else if (!/^[A-Za-z0-9_.]+@[A-Za-z0-9]+\.(com|lk)$/i.test(email)) e.email = 'Email must end with .com or .lk';
         if (!password) e.password = 'Password is required';
         setErrors(e);
         return Object.keys(e).length === 0;
@@ -39,7 +38,7 @@ export default function LoginScreen({ navigation }) {
     };
 
     return (
-        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
                 {/* Brand Header */}
@@ -56,27 +55,6 @@ export default function LoginScreen({ navigation }) {
                     <Text style={styles.cardTitle}>Welcome Back</Text>
                     <Text style={styles.cardSub}>Sign in to continue</Text>
 
-                    {/* Role Selector */}
-                    <View style={styles.segmented}>
-                        {['tenant', 'owner'].map((r) => (
-                            <TouchableOpacity
-                                key={r}
-                                style={[styles.segTab, role === r && styles.segTabActive]}
-                                onPress={() => setRole(r)}
-                                activeOpacity={0.8}
-                            >
-                                <Ionicons
-                                    name={r === 'tenant' ? 'person' : 'business'}
-                                    size={16}
-                                    color={role === r ? colors.primary : colors.onSurfaceVariant}
-                                    style={{ marginRight: 6 }}
-                                />
-                                <Text style={[styles.segText, role === r && styles.segTextActive]}>
-                                    {r === 'tenant' ? 'Tenant' : 'Property Owner'}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
 
                     <Input
                         label="Email Address"

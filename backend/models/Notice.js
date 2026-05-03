@@ -2,10 +2,11 @@ const mongoose = require('mongoose');
 
 const noticeSchema = new mongoose.Schema({
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    property: { type: mongoose.Schema.Types.ObjectId, ref: 'Property' }, // optional – if null, applies to all
+    targetAll: { type: Boolean, default: false },
+    targetProperties: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Property' }],
     title: { type: String, required: true, trim: true },
     content: { type: String, required: true },
-    attachment: { type: String }, // PDF or image URL
+    documents: [{ type: String }],
 }, { timestamps: true });
 
 module.exports = mongoose.model('Notice', noticeSchema);

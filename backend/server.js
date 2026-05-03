@@ -25,6 +25,7 @@ app.use('/api/leases', require('./routes/leases'));
 app.use('/api/bills', require('./routes/bills'));
 app.use('/api/maintenance', require('./routes/maintenance'));
 app.use('/api/notices', require('./routes/notices'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 // Health check
 app.get('/', (req, res) => res.json({ message: 'GreenLease API running ✅', version: '1.0.0' }));

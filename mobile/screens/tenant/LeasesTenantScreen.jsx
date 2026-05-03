@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl, Modal, TextInput,
+    View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl, Modal, TextInput, Linking, KeyboardAvoidingView, Platform
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { leasesAPI } from '../../services/api';
+import { useFocusEffect } from '@react-navigation/native';
+import { leasesAPI, authAPI, BASE_URL } from '../../services/api';
 import Card from '../../components/Card';
 import Badge from '../../components/Badge';
 import Button from '../../components/Button';
@@ -20,8 +21,8 @@ export default function LeasesTenantScreen({ navigation }) {
     const [leases, setLeases] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [updateModal, setUpdateModal] = useState(null);
-    const [doc, setDoc] = useState(null);
+    const [terminateModal, setTerminateModal] = useState(null);
+    const [termReason, setTermReason] = useState('');
     const [saving, setSaving] = useState(false);
 
     const load = useCallback(async () => {
@@ -30,35 +31,47 @@ export default function LeasesTenantScreen({ navigation }) {
         finally { setLoading(false); setRefreshing(false); }
     }, []);
 
+    useFocusEffect(useCallback(() => {
+        load();
+        authAPI.clearNotification('leases').catch(() => { });
+    }, [load]));
+
     useEffect(() => { load(); }, [load]);
 
-    const pickDoc = async () => {
-        const r = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'] });
-        if (!r.canceled && r.assets?.[0]) setDoc(r.assets[0]);
-    };
+    const hasActiveLease = leases.some(l => l.status === 'active');
 
-    const handleUpdate = async (id) => {
+    const handleTerminate = async () => {
+        if (!termReason.trim()) { Alert.alert('Error', 'Termination reason is required'); return; }
         setSaving(true);
         try {
-            const fd = new FormData();
-            const u = updateModal;
-            if (u.startDate) fd.append('startDate', u.startDate);
-            if (u.endDate) fd.append('endDate', u.endDate);
-            if (u.rentAmount) fd.append('rentAmount', u.rentAmount);
-            if (u.terms) fd.append('terms', u.terms);
-            if (doc) fd.append('document', { uri: doc.uri, type: doc.mimeType, name: doc.name });
-            await leasesAPI.update(id, fd);
-            setUpdateModal(null); setDoc(null); load();
-            Alert.alert('Sent', 'Lease update request sent to property owner.');
+            await leasesAPI.requestTermination(terminateModal._id, { reason: termReason.trim() });
+            setTerminateModal(null); setTermReason(''); load();
+            Alert.alert('Sent', 'Termination request sent to the owner for approval.');
         } catch (err) { Alert.alert('Error', err?.response?.data?.message || 'Failed'); }
         finally { setSaving(false); }
     };
 
-    const handleTerminate = (id) => {
-        Alert.alert('Terminate Lease', 'Request lease termination? Owner must approve.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Request', style: 'destructive', onPress: async () => { try { await leasesAPI.delete(id); load(); Alert.alert('Sent', 'Termination request sent.'); } catch (err) { Alert.alert('Error', 'Failed'); } } },
-        ]);
+    const handleCancelDirectly = (item) => {
+        Alert.alert(
+            'Cancel Lease Request',
+            'Are you sure you want to cancel this pending lease request? This cannot be undone.',
+            [
+                { text: 'No', style: 'cancel' },
+                {
+                    text: 'Yes, Cancel',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await leasesAPI.delete(item._id);
+                            load();
+                            Alert.alert('Cancelled', 'Your lease request has been cancelled.');
+                        } catch (err) {
+                            Alert.alert('Error', err?.response?.data?.message || 'Failed to cancel');
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     return (
@@ -76,10 +89,10 @@ export default function LeasesTenantScreen({ navigation }) {
                 {leases.map(item => (
                     <Card key={item._id} style={styles.card}>
                         <View style={styles.cardTop}>
-                            <View style={{ flex: 1 }}>
+                            <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('PropertyDetail', { id: item.property?._id })}>
                                 <Text style={styles.propTitle} numberOfLines={1}>{item.property?.title || 'Property'}</Text>
                                 <Text style={styles.ownerName}>Owner: {item.owner?.name}</Text>
-                            </View>
+                            </TouchableOpacity>
                             <Badge status={item.status} />
                         </View>
                         <View style={styles.leaseInfo}>
@@ -87,13 +100,93 @@ export default function LeasesTenantScreen({ navigation }) {
                             <View style={styles.infoRow}><Text style={styles.infoLabel}>Rent</Text><Text style={styles.infoVal}>{formatLKR(item.rentAmount)}/mo</Text></View>
                             {item.terms && <View style={styles.infoRow}><Text style={styles.infoLabel}>Terms</Text><Text style={styles.infoVal} numberOfLines={2}>{item.terms}</Text></View>}
                         </View>
+                        {item.documents && item.documents.length > 0 && (
+                            <View style={{ marginTop: spacing.sm, gap: 4 }}>
+                                <Text style={styles.infoLabel}>Attachments:</Text>
+                                {item.documents.map((docUrl, idx) => (
+                                    <TouchableOpacity key={idx} onPress={() => Linking.openURL(`${BASE_URL}${docUrl}`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Ionicons name="document-text" size={16} color={colors.primary} />
+                                        <Text style={{ ...typography.bodySm, color: colors.primary }}>View Attachment {idx + 1}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
                         {item.status === 'rejected' && item.rejectionReason && (
                             <View style={styles.rejBox}><Text style={styles.rejText}>Reason: {item.rejectionReason}</Text></View>
                         )}
+                        {/* Update rejection: lease is still active but update was rejected */}
+                        {item.status === 'active' && item.rejectionReason && (
+                            <View style={[styles.rejBox, { backgroundColor: '#fff3e0' }]}>
+                                <Text style={[styles.rejText, { color: '#e65100' }]}>
+                                    ⚠️ Update request rejected: {item.rejectionReason}
+                                </Text>
+                            </View>
+                        )}
+                        {item.status === 'cancelled' && (
+                            <View style={[styles.rejBox, { backgroundColor: colors.surfaceContainerHighest }]}>
+                                <Text style={[styles.rejText, { color: colors.onSurface }]}>
+                                    {item.tenantCancellationReason || 'This lease request was cancelled.'}
+                                </Text>
+                            </View>
+                        )}
+                        {item.status === 'terminated' && (
+                            <View style={[styles.rejBox, { backgroundColor: colors.outlineVariant + '40' }]}><Text style={[styles.rejText, { color: colors.onSurface }]}>Terminated{item.terminationReason ? `: ${item.terminationReason}` : ''}</Text></View>
+                        )}
+                        {/* PENDING: direct edit or cancel without any approval needed */}
+                        {item.status === 'pending_approval' && (
+                            <View style={styles.btnRow}>
+                                <Button
+                                    title="Edit"
+                                    variant="outline"
+                                    size="sm"
+                                    style={styles.half}
+                                    icon={<Ionicons name="create-outline" size={14} color={colors.primary} />}
+                                    onPress={() => navigation.push('RequestLease', {
+                                        editLease: {
+                                            _id: item._id,
+                                            startDate: item.startDate,
+                                            endDate: item.endDate,
+                                            rentAmount: item.rentAmount,
+                                            rentDueDay: item.rentDueDay || 1,
+                                            terms: item.terms || '',
+                                            documents: item.documents || [],
+                                            property: { title: item.property?.title || '' },
+                                        }
+                                    })}
+                                />
+                                <Button
+                                    title="Cancel Request"
+                                    variant="danger"
+                                    size="sm"
+                                    style={styles.half}
+                                    onPress={() => handleCancelDirectly(item)}
+                                />
+                            </View>
+                        )}
+                        {/* ACTIVE: Request Update navigates to full form; Termination opens modal */}
                         {item.status === 'active' && (
                             <View style={styles.btnRow}>
-                                <Button title="Request Update" variant="outline" size="sm" style={styles.half} onPress={() => { setUpdateModal({ id: item._id, startDate: '', endDate: '', rentAmount: '', terms: '' }); setDoc(null); }} />
-                                <Button title="Terminate" variant="danger" size="sm" style={styles.half} onPress={() => handleTerminate(item._id)} />
+                                <Button
+                                    title="Request Update"
+                                    variant="outline"
+                                    size="sm"
+                                    style={styles.half}
+                                    onPress={() => navigation.push('RequestLease', {
+                                        isUpdateRequest: true,
+                                        editLease: {
+                                            _id: item._id,
+                                            startDate: item.startDate,
+                                            endDate: item.endDate,
+                                            rentAmount: item.rentAmount,
+                                            rentDueDay: item.rentDueDay || 1,
+                                            terms: item.terms || '',
+                                            documents: item.documents || [],
+                                            property: { title: item.property?.title || '' },
+                                        },
+                                    })}
+                                />
+                                <Button title="Request Termination" variant="danger" size="sm" style={styles.half}
+                                    onPress={() => { setTerminateModal(item); setTermReason(''); }} />
                             </View>
                         )}
                     </Card>
@@ -104,30 +197,46 @@ export default function LeasesTenantScreen({ navigation }) {
                         <Text style={styles.emptyText}>No lease contracts yet</Text>
                     </View>
                 )}
-                <Button
-                    title="Find Properties to Lease"
-                    onPress={() => navigation.navigate('Explorer')}
-                    style={{ marginTop: spacing.md }}
-                    icon={<Ionicons name="search" size={18} color={colors.onPrimary} />}
-                />
+                {hasActiveLease ? (
+                    <View style={styles.activeBanner}>
+                        <Ionicons name="lock-closed" size={16} color={colors.primary} />
+                        <Text style={styles.activeBannerText}>
+                            You have an active lease. Terminate it first to request a new one.
+                        </Text>
+                    </View>
+                ) : (
+                    <Button
+                        title="Find Properties to Lease"
+                        onPress={() => navigation.navigate('Explorer')}
+                        style={{ marginTop: spacing.md }}
+                        icon={<Ionicons name="search" size={18} color={colors.onPrimary} />}
+                    />
+                )}
             </ScrollView>
 
             {/* Update Modal */}
-            <Modal visible={!!updateModal} transparent animationType="slide" onRequestClose={() => setUpdateModal(null)}>
-                <View style={styles.overlay}>
-                    <ScrollView style={styles.modal} keyboardShouldPersistTaps="handled">
-                        <Text style={styles.modalTitle}>Request Lease Update</Text>
-                        <Input label="New Start Date" placeholder="2025-07-01" value={updateModal?.startDate || ''} onChangeText={v => setUpdateModal(p => ({ ...p, startDate: v }))} />
-                        <Input label="New End Date" placeholder="2026-06-30" value={updateModal?.endDate || ''} onChangeText={v => setUpdateModal(p => ({ ...p, endDate: v }))} />
-                        <Input label="New Rent Amount" placeholder="55000" value={updateModal?.rentAmount || ''} onChangeText={v => setUpdateModal(p => ({ ...p, rentAmount: v }))} keyboardType="numeric" />
-                        <Input label="Updated Terms" placeholder="Updated terms..." value={updateModal?.terms || ''} onChangeText={v => setUpdateModal(p => ({ ...p, terms: v }))} multiline numberOfLines={3} />
-                        <TouchableOpacity style={styles.attachBtn} onPress={pickDoc}><Ionicons name="attach" size={18} color={colors.primary} /><Text style={styles.attachText}>{doc ? doc.name : 'Attach Document'}</Text></TouchableOpacity>
+
+            {/* Terminate Modal */}
+            <Modal visible={!!terminateModal} transparent animationType="slide" onRequestClose={() => setTerminateModal(null)}>
+                <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                    <View style={styles.modal}>
+                        <Text style={styles.modalTitle}>Request Termination</Text>
+                        <Text style={{ ...typography.bodySm, color: colors.onSurfaceVariant, marginBottom: spacing.sm }}>Provide a reason to request termination. This requires owner approval.</Text>
+                        <TextInput
+                            style={{ borderWidth: 1, borderColor: colors.outlineVariant, borderRadius: 12, padding: spacing.md, ...typography.bodyMd, color: colors.onSurface, height: 100, textAlignVertical: 'top' }}
+                            placeholder="Enter reason..."
+                            placeholderTextColor={colors.outline}
+                            value={termReason}
+                            onChangeText={setTermReason}
+                            multiline
+                            numberOfLines={4}
+                        />
                         <View style={styles.btnRow}>
-                            <Button title="Cancel" variant="ghost" style={styles.half} onPress={() => setUpdateModal(null)} />
-                            <Button title="Send Request" style={styles.half} loading={saving} onPress={() => handleUpdate(updateModal.id)} />
+                            <Button title="Go Back" variant="ghost" style={styles.half} onPress={() => setTerminateModal(null)} />
+                            <Button title="Submit Request" variant="danger" style={styles.half} loading={saving} onPress={handleTerminate} />
                         </View>
-                    </ScrollView>
-                </View>
+                    </View>
+                </KeyboardAvoidingView>
             </Modal>
         </View>
     );
@@ -152,6 +261,8 @@ const styles = StyleSheet.create({
     half: { flex: 1 },
     empty: { alignItems: 'center', paddingTop: 80, gap: spacing.sm },
     emptyText: { ...typography.bodyMd, color: colors.onSurfaceVariant },
+    activeBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.primaryFixed + '22', borderRadius: 12, padding: spacing.md, marginTop: spacing.md },
+    activeBannerText: { ...typography.bodySm, color: colors.primary, flex: 1 },
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
     modal: { backgroundColor: colors.surfaceContainerLowest, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: spacing.xl, maxHeight: '90%' },
     modalTitle: { ...typography.h3, color: colors.onSurface, marginBottom: spacing.md },

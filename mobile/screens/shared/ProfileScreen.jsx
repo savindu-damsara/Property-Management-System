@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image,
+    View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Modal,
+    KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -19,8 +20,14 @@ export default function ProfileScreen({ navigation }) {
     const [editing, setEditing] = useState(false);
     const [form, setForm] = useState({ name: user?.name || '', phone: user?.phone || '' });
     const [saving, setSaving] = useState(false);
+    const [newAvatar, setNewAvatar] = useState(null);
 
-    const avatarUri = user?.avatar ? `${BASE_URL}${user.avatar}` : null;
+    const [editPw, setEditPw] = useState(false);
+    const [pwForm, setPwForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
+    const [delAccount, setDelAccount] = useState(false);
+    const [delPw, setDelPw] = useState('');
+
+    const avatarUri = newAvatar ? newAvatar.uri : (user?.avatar ? `${BASE_URL}${user.avatar}` : null);
     const initial = (user?.name || 'U')[0].toUpperCase();
 
     const handlePickAvatar = async () => {
@@ -28,17 +35,35 @@ export default function ProfileScreen({ navigation }) {
         if (!perm.granted) return;
         const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, aspect: [1, 1], allowsEditing: true });
         if (!r.canceled && r.assets?.[0]) {
-            // In production, upload to backend; for now just store uri
-            Alert.alert('Info', 'Avatar upload to be integrated with hosted backend');
+            setNewAvatar(r.assets[0]);
         }
     };
 
     const handleSave = async () => {
+        if (!form.name.trim() || !/^[A-Za-z\s]+$/.test(form.name)) {
+            Alert.alert('Validation Error', 'Name must contain only letters'); return;
+        }
+        const phone = form.phone.trim();
+        if (!phone) {
+            Alert.alert('Validation Error', 'Phone number is required'); return;
+        }
+        const localPhone = /^\d{10}$/.test(phone);
+        const intlPhone = /^\+\d{11}$/.test(phone);
+        if (!localPhone && !intlPhone) {
+            Alert.alert('Validation Error', 'Enter 10 digits, or + followed by 11 digits'); return;
+        }
+
         setSaving(true);
         try {
-            const { data } = await authAPI.updateProfile({ name: form.name, phone: form.phone });
+            const fd = new FormData();
+            fd.append('name', form.name);
+            fd.append('phone', form.phone);
+            if (newAvatar) fd.append('avatar', { uri: newAvatar.uri, type: 'image/jpeg', name: 'avatar.jpg' });
+
+            const { data } = await authAPI.updateProfile(fd);
             updateUser({ ...user, ...data });
             setEditing(false);
+            setNewAvatar(null);
             Alert.alert('Success', 'Profile updated!');
         } catch (err) {
             Alert.alert('Error', err?.response?.data?.message || 'Failed to update');
@@ -52,6 +77,30 @@ export default function ProfileScreen({ navigation }) {
             { text: 'Cancel', style: 'cancel' },
             { text: 'Logout', style: 'destructive', onPress: logout },
         ]);
+    };
+
+    const handleSavePassword = async () => {
+        if (!pwForm.oldPassword) { Alert.alert('Error', 'Current password needed'); return; }
+        if (!/^(?=.*[A-Z])(?=.*\d).{6,}$/.test(pwForm.newPassword)) { Alert.alert('Error', 'Min 6 chars, uppercase & number required for new password'); return; }
+        if (pwForm.newPassword !== pwForm.confirmPassword) { Alert.alert('Error', 'Passwords do not match'); return; }
+        setSaving(true);
+        try {
+            await authAPI.changePassword(pwForm);
+            Alert.alert('Success', 'Password updated successfully!');
+            setEditPw(false); setPwForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
+        } catch (err) { Alert.alert('Error', err?.response?.data?.message || 'Failed to update'); }
+        finally { setSaving(false); }
+    };
+
+    const handleDeleteAccount = async () => {
+        if (!delPw) { Alert.alert('Error', 'Please enter your password to confirm deletion'); return; }
+        setSaving(true);
+        try {
+            await authAPI.deleteAccount({ password: delPw });
+            Alert.alert('Deleted', 'Your account has been deleted.');
+            logout();
+        } catch (err) { Alert.alert('Error', err?.response?.data?.message || 'Failed to delete account'); }
+        finally { setSaving(false); }
     };
 
     return (
@@ -68,12 +117,12 @@ export default function ProfileScreen({ navigation }) {
                 </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.scroll}>
+            <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: Platform.OS === 'android' ? 150 : 40 }]}>
                 {/* Avatar */}
                 <View style={styles.avatarSection}>
                     <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.8}>
                         {avatarUri ? (
-                            <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
+                            <Image key={avatarUri} source={{ uri: avatarUri }} style={styles.avatarImg} />
                         ) : (
                             <View style={styles.avatarCircle}>
                                 <Text style={styles.avatarInitial}>{initial}</Text>
@@ -120,6 +169,20 @@ export default function ProfileScreen({ navigation }) {
                 <Card style={[styles.infoCard, { marginTop: spacing.lg }]}>
                     <Text style={styles.infoTitle}>Account Actions</Text>
                     <Button
+                        title="Change Password"
+                        variant="outline"
+                        onPress={() => setEditPw(true)}
+                        icon={<Ionicons name="key-outline" size={18} color={colors.primary} />}
+                        style={{ marginBottom: spacing.sm }}
+                    />
+                    <Button
+                        title="Delete Account"
+                        variant="danger"
+                        onPress={() => setDelAccount(true)}
+                        icon={<Ionicons name="trash-outline" size={18} color={colors.onError} />}
+                        style={{ marginBottom: spacing.sm }}
+                    />
+                    <Button
                         title="Logout"
                         variant="danger"
                         onPress={handleLogout}
@@ -127,6 +190,35 @@ export default function ProfileScreen({ navigation }) {
                     />
                 </Card>
             </ScrollView>
+
+            <Modal visible={editPw} transparent animationType="slide" onRequestClose={() => setEditPw(false)}>
+                <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                    <View style={styles.modal}>
+                        <Text style={styles.modalTitle}>Change Password</Text>
+                        <Input label="Current Password" value={pwForm.oldPassword} onChangeText={v => setPwForm(p => ({ ...p, oldPassword: v }))} secureTextEntry />
+                        <Input label="New Password" value={pwForm.newPassword} onChangeText={v => setPwForm(p => ({ ...p, newPassword: v }))} secureTextEntry />
+                        <Input label="Confirm Password" value={pwForm.confirmPassword} onChangeText={v => setPwForm(p => ({ ...p, confirmPassword: v }))} secureTextEntry />
+                        <View style={styles.modalBtns}>
+                            <Button title="Cancel" variant="ghost" onPress={() => setEditPw(false)} style={styles.half} />
+                            <Button title="Save" loading={saving} onPress={handleSavePassword} style={styles.half} />
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
+
+            <Modal visible={delAccount} transparent animationType="slide" onRequestClose={() => setDelAccount(false)}>
+                <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                    <View style={styles.modal}>
+                        <Text style={styles.modalTitle}>Delete Account</Text>
+                        <Text style={styles.modalSub}>This action is irreversible. Enter your password to confirm.</Text>
+                        <Input label="Password" value={delPw} onChangeText={setDelPw} secureTextEntry />
+                        <View style={styles.modalBtns}>
+                            <Button title="Cancel" variant="ghost" onPress={() => { setDelAccount(false); setDelPw(''); }} style={styles.half} />
+                            <Button title="Delete Forever" variant="danger" loading={saving} onPress={handleDeleteAccount} style={styles.half} />
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
         </View>
     );
 }
@@ -159,4 +251,10 @@ const styles = StyleSheet.create({
     infoIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.secondaryContainer, alignItems: 'center', justifyContent: 'center' },
     infoLabel: { ...typography.labelMd, color: colors.onSurfaceVariant },
     infoValue: { ...typography.bodyMd, color: colors.onSurface },
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    modal: { backgroundColor: colors.surfaceContainerLowest, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: spacing.xl, gap: spacing.sm },
+    modalTitle: { ...typography.h3, color: colors.onSurface },
+    modalSub: { ...typography.bodySm, color: colors.error },
+    modalBtns: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+    half: { flex: 1 },
 });

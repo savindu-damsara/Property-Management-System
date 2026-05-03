@@ -124,13 +124,13 @@ export default function RequestLeaseScreen({ navigation, route }) {
     };
 
     return (
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background, height: Platform.OS === 'web' ? '100vh' : '100%' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background, height: Platform.OS === 'web' ? '100vh' : '100%' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <ScreenHeader
                 title={isUpdateRequest ? 'Request Lease Update' : editLease ? 'Edit Pending Lease' : 'Request Lease'}
                 subtitle={property?.title || editLease?.property?.title}
                 onBack={() => navigation.goBack()}
             />
-            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+            <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: Platform.OS === 'android' ? 150 : 40 }]} keyboardShouldPersistTaps="handled">
                 <Card style={styles.noticeCard} variant="filled">
                     <View style={styles.noticeRow}>
                         <Ionicons name="document-text" size={20} color={colors.primary} />
@@ -181,8 +181,8 @@ export default function RequestLeaseScreen({ navigation, route }) {
                     </Modal>
                 ) : (
                     <>
-                        {showStartPicker && <DateTimePicker value={startDate} mode="date" display="default" minimumDate={new Date()} onChange={onStartChange} />}
-                        {showEndPicker && <DateTimePicker value={endDate} mode="date" display="default" minimumDate={startDate} onChange={onEndChange} />}
+                        {showStartPicker && <DateTimePicker value={startDate} mode="date" display="default" minimumDate={new Date()} onChange={({ type }, d) => { setShowStartPicker(false); if (type === 'set' && d) onStartChange(null, d); }} />}
+                        {showEndPicker && <DateTimePicker value={endDate} mode="date" display="default" minimumDate={startDate} onChange={({ type }, d) => { setShowEndPicker(false); if (type === 'set' && d) onEndChange(null, d); }} />}
                     </>
                 )}
 
